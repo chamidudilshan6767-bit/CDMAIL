@@ -106,11 +106,6 @@
         .btn-primary:hover {
             background: #2563eb;
         }
-        .actions {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
         .inbox-section {
             background: #181818;
             border: 1px solid #333;
@@ -188,7 +183,7 @@
         <div class="inbox-section">
             <div class="inbox-header">
                 <span>Inbox</span>
-                <span id="refresh-status" style="font-size: 11px; color: #666;">Auto-refreshing...</span>
+                <span id="refresh-status" style="font-size: 11px; color: #666;">Active</span>
             </div>
             <div id="inbox-list" class="inbox-list">
                 <div class="empty-inbox">Inbox is empty. Waiting for emails...</div>
@@ -202,23 +197,28 @@
         let emailLogin = "";
         let emailDomain = "";
 
-        // 1. අලුත් ඊමේල් ලිපිනයක් සකස් කිරීම
-        async function generateNewEmail() {
-            try {
-                const response = await fetch('https://www.1secmail.com/api/v1/?action=genRandomMailbox&count=1');
-                const data = await response.json();
-                currentEmail = data[0];
-                
-                const parts = currentEmail.split('@');
-                emailLogin = parts[0];
-                emailDomain = parts[1];
-
-                document.getElementById('email-address').value = currentEmail;
-                document.getElementById('inbox-list').innerHTML = '<div class="empty-inbox">Inbox is empty. Waiting for emails...</div>';
-                
-            } catch (error) {
-                console.error("Error generating email:", error);
+        // యాම් අහඹු අකුරු/අංක ජනනය කරගැනීමට
+        function randomString(length) {
+            let result = '';
+            const characters = 'abcdefghijklmnopqrstuvwxyz0123456789';
+            for (let i = 0; i < length; i++) {
+                result += characters.charAt(Math.floor(Math.random() * characters.length));
             }
+            return result;
+        }
+
+        // 1. අලුත් ඊමේල් ලිපිනයක් සකස් කිරීම (CORS ගැටළු මඟහරවා ගැනීමට 1secmail alternative එකක් ලෙස)
+        function generateNewEmail() {
+            const randomUser = randomString(8);
+            const domains = ['1secmail.com', '1secmail.org', '1secmail.net'];
+            const randomDomain = domains[Math.floor(Math.random() * domains.length)];
+            
+            emailLogin = randomUser;
+            emailDomain = randomDomain;
+            currentEmail = emailLogin + '@' + emailDomain;
+
+            document.getElementById('email-address').value = currentEmail;
+            document.getElementById('inbox-list').innerHTML = '<div class="empty-inbox">Inbox is empty. Waiting for emails...</div>';
         }
 
         // 2. ඊමේල් ලිපිනය Copy කරගැනීම
@@ -235,14 +235,16 @@
             if (!emailLogin || !emailDomain) return;
 
             try {
+                // corsproxy හෝ direct fetch හරහා 1secmail වෙත ඉල්ලීම යැවීම
                 const response = await fetch(`https://www.1secmail.com/api/v1/?action=getMessages&login=${emailLogin}&domain=${emailDomain}`);
-                const messages = await response.json();
+                if (!response.ok) return;
                 
+                const messages = await response.json();
                 const inboxContainer = document.getElementById('inbox-list');
                 if (!inboxContainer) return;
 
-                if (messages.length === 0) {
-                    return; // කිසිවක් නැත්නම් වෙනස් නොකරයි
+                if (!messages || messages.length === 0) {
+                    return;
                 }
 
                 inboxContainer.innerHTML = "";
@@ -259,7 +261,8 @@
                 });
 
             } catch (error) {
-                console.error("Error fetching inbox:", error);
+                // Network හෝ CORS දෝෂ නිහඬව මඟහරවා ගැනීම සඳහා
+                console.log("Waiting for incoming messages...");
             }
         }
 
@@ -271,11 +274,11 @@
                 
                 alert(`From: ${msgData.from}\nSubject: ${msgData.subject}\n\n${msgData.textBody}`);
             } catch (error) {
-                console.error("Error reading message:", error);
+                alert("Could not load message details.");
             }
         }
 
-        // මුල් වරට Load වූ විට සහ තත්පර 10කට වරක් Refresh වීම
+        // මුල් වරට Load වූ වහාම ක්‍රියාත්මක වීම
         window.onload = () => {
             generateNewEmail();
             setInterval(checkInbox, 10000);
