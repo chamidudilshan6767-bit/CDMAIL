@@ -1,542 +1,76 @@
-<!DOCTYPE html>
-<html lang="en" class="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CDMAIL - Matte Temporary Email Service</title>
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- FontAwesome Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- QRCode.js Library -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        darkbg: '#09090b',
-                        cardbg: '#121215',
-                        panelbg: '#18181b',
-                        hoverbg: '#27272a',
-                        bordercolor: '#27272a',
-                    },
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    }
-                }
-            }
+// විචල්‍යයන් (Variables)
+let currentEmail = "";
+let emailLogin = "";
+let emailDomain = "";
+
+// 1. අලුත් ඊමේල් ලිපිනයක් සකස් කිරීම (Generate Email)
+async function generateNewEmail() {
+    try {
+        const response = await fetch('https://www.1secmail.com/api/v1/?action=genRandomMailbox&count=1');
+        const data = await response.json();
+        currentEmail = data[0]; // උදාහරණයක් ලෙස: abc123xyz@1secmail.com
+        
+        const parts = currentEmail.split('@');
+        emailLogin = parts[0];
+        emailDomain = parts[1];
+
+        // UI එකේ ඊමේල් ලිපිනය පෙන්වීම සඳහා (ඔබේ HTML එකේ id එක 'email-address' නම්)
+        document.getElementById('email-address').value = currentEmail;
+        
+        // ඉන්බොක්ස් එක හිස් කිරීම
+        document.getElementById('inbox-list').innerHTML = '<p style="color: #888; text-align: center;">Inbox is empty. Waiting for emails...</p>';
+        
+    } catch (error) {
+        console.error("Error generating email:", error);
+    }
+}
+
+// 2. ඉන්බොක්ස් එක පරීක්ෂා කිරීම (Check Inbox / Refresh)
+async function checkInbox() {
+    if (!emailLogin || !emailDomain) return;
+
+    try {
+        const response = await fetch(`https://www.1secmail.com/api/v1/?action=getMessages&login=${emailLogin}&domain=${emailDomain}`);
+        const messages = await response.json();
+        
+        const inboxContainer = document.getElementById('inbox-list');
+        inboxContainer.innerHTML = "";
+
+        if (messages.length === 0) {
+            inboxContainer.innerHTML = '<p style="color: #888; text-align: center;">0 messages found.</p>';
+            return;
         }
-    </script>
-    <style>
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #09090b;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #27272a;
-            border-radius: 9999px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #3f3f46;
-        }
-    </style>
-</head>
-<body class="bg-darkbg text-zinc-100 font-sans min-h-screen flex flex-col antialiased">
 
-    <!-- Header Navigation -->
-    <header class="bg-cardbg border-b border-bordercolor sticky top-0 z-30">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-            <!-- App Branding -->
-            <div class="flex items-center space-x-3">
-                <div class="w-10 h-10 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-100 font-black text-lg tracking-wider">
-                    CD
-                </div>
-                <div>
-                    <h1 class="text-xl font-bold tracking-tight text-zinc-100">CDMAIL</h1>
-                    <p class="text-xs text-zinc-500 font-medium">Matte Dark Email Suite</p>
-                </div>
-            </div>
-
-            <!-- Header Controls -->
-            <div class="flex items-center space-x-2 sm:space-x-3">
-                <button id="sim-btn" onclick="triggerIncomingEmail()" class="hidden sm:flex items-center space-x-2 text-xs font-semibold bg-zinc-800/80 hover:bg-zinc-800 text-emerald-400 border border-zinc-700 px-3 py-2 rounded-lg transition" title="Simulate incoming message">
-                    <i class="fa-solid fa-flask"></i>
-                    <span>Simulate Mail</span>
-                </button>
-
-                <button id="sound-btn" onclick="toggleSound()" class="p-2 text-zinc-400 hover:text-zinc-200 rounded-lg bg-zinc-800/40 hover:bg-zinc-800 border border-zinc-700/60 transition" title="Toggle sound alerts">
-                    <i id="sound-icon" class="fa-solid fa-bell text-sm"></i>
-                </button>
-            </div>
-        </div>
-    </header>
-
-    <!-- Main Container -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full flex flex-col space-y-6">
-
-        <!-- Address Bar Section -->
-        <section class="bg-cardbg rounded-xl p-4 sm:p-6 border border-bordercolor">
-            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                
-                <div class="flex-1">
-                    <div class="flex items-center justify-between mb-2">
-                        <label class="block text-xs font-semibold uppercase tracking-wider text-zinc-500">Active CDMAIL Address</label>
-                        <span class="text-[11px] bg-zinc-800 text-emerald-400 border border-zinc-700 px-2.5 py-0.5 rounded-full font-medium">
-                            <i class="fa-solid fa-shield-halved mr-1 text-[10px]"></i>Manual Erasure Mode
-                        </span>
-                    </div>
-                    <div class="flex flex-col sm:flex-row items-stretch gap-2">
-                        <div class="relative flex-1 flex items-center">
-                            <input type="text" id="email-address" readonly class="w-full bg-darkbg border border-bordercolor text-zinc-100 font-mono text-base sm:text-lg font-semibold px-4 py-3 rounded-lg focus:outline-none focus:border-zinc-500 transition select-all pr-10" value="generating...">
-                            <div class="absolute right-3 text-zinc-600">
-                                <i class="fa-solid fa-lock text-sm" title="Private Session"></i>
-                            </div>
-                        </div>
-
-                        <!-- Action Buttons -->
-                        <div class="flex items-center gap-2">
-                            <button id="copy-btn" onclick="copyEmail()" class="flex-1 sm:flex-none flex items-center justify-center space-x-2 bg-zinc-200 hover:bg-white text-zinc-900 font-semibold px-5 py-3 rounded-lg transition active:scale-95 text-sm">
-                                <i class="fa-regular fa-copy"></i>
-                                <span id="copy-text">Copy</span>
-                            </button>
-
-                            <button onclick="showQrCode()" class="p-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700/70 rounded-lg transition" title="Show QR Code">
-                                <i class="fa-solid fa-qrcode text-base"></i>
-                            </button>
-
-                            <button onclick="createNewEmail()" class="p-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700/70 rounded-lg transition" title="Randomize Address">
-                                <i class="fa-solid fa-arrows-rotate text-base"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Customization & Manual Deletion -->
-                <div class="flex items-center justify-between lg:justify-end gap-3 pt-4 lg:pt-0 border-t lg:border-t-0 border-zinc-800">
-                    <button onclick="openCustomModal()" class="text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:underline flex items-center gap-1.5">
-                        <i class="fa-solid fa-pen-to-square"></i>
-                        <span>Customize Address</span>
-                    </button>
-                    
-                    <button onclick="deleteMailbox()" class="text-xs font-semibold bg-rose-950/30 text-rose-400 border border-rose-900/60 px-3 py-2 rounded-lg hover:bg-rose-900/40 transition flex items-center gap-1.5" title="Manually delete mailbox">
-                        <i class="fa-solid fa-trash"></i>
-                        <span>Delete Mailbox</span>
-                    </button>
-                </div>
-
-            </div>
-        </section>
-
-        <!-- Dynamic Status Bar -->
-        <div class="flex items-center justify-between text-xs text-zinc-500 px-1">
-            <div class="flex items-center space-x-2">
-                <span class="relative flex h-2 w-2">
-                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
-                    <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-                <span>Active • Listening on @cdmail.net</span>
-            </div>
-            <div class="flex items-center space-x-3">
-                <button onclick="refreshInbox()" class="hover:text-zinc-300 flex items-center space-x-1 transition">
-                    <i id="refresh-icon" class="fa-solid fa-rotate text-xs"></i>
-                    <span>Refresh Inbox</span>
-                </button>
-                <button onclick="triggerIncomingEmail()" class="sm:hidden text-emerald-400 font-semibold">+ Add Test Mail</button>
-            </div>
-        </div>
-
-        <!-- Mailbox Workspace -->
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-[460px]">
+        messages.forEach(msg => {
+            const msgItem = document.createElement('div');
+            msgItem.style.cssText = "background: #1e1e1e; padding: 10px; margin-bottom: 8px; border-radius: 6px; cursor: pointer; color: #fff;";
+            msgItem.innerHTML = `<strong>From:</strong> ${msg.from}<br><strong>Subject:</strong> ${msg.subject}`;
             
-            <!-- Inbox List Panel -->
-            <div class="lg:col-span-5 bg-cardbg rounded-xl border border-bordercolor flex flex-col overflow-hidden">
-                <div class="p-4 border-b border-bordercolor flex items-center justify-between bg-zinc-900/40">
-                    <h2 class="font-bold text-zinc-200 text-sm flex items-center gap-2">
-                        <i class="fa-solid fa-inbox text-zinc-400"></i>
-                        <span>Inbox</span>
-                    </h2>
-                    <span id="email-count" class="bg-zinc-800 text-zinc-300 border border-zinc-700 text-xs font-medium px-2.5 py-0.5 rounded-full">0 messages</span>
-                </div>
+            // පණිවිඩය උඩ ක්ලික් කළ විට එය විවෘත කර බැලීමට
+            msgItem.onclick = () => readMessage(msg.id);
+            inboxContainer.appendChild(msgItem);
+        });
 
-                <div id="email-list" class="flex-1 overflow-y-auto divide-y divide-zinc-800/80">
-                    <div id="empty-state" class="h-full flex flex-col items-center justify-center p-8 text-center text-zinc-500">
-                        <div class="w-12 h-12 rounded-lg bg-zinc-800/60 border border-zinc-700/50 flex items-center justify-center mb-3 text-zinc-500">
-                            <i class="fa-regular fa-envelope-open text-xl"></i>
-                        </div>
-                        <p class="font-semibold text-zinc-300 text-sm">Inbox Empty</p>
-                        <p class="text-xs text-zinc-500 max-w-xs mt-1">Emails sent to your address will appear here until manually deleted.</p>
-                    </div>
-                </div>
-            </div>
+    } (error) {
+        console.error("Error fetching inbox:", error);
+    }
+}
 
-            <!-- Email Viewer Panel -->
-            <div class="lg:col-span-7 bg-cardbg rounded-xl border border-bordercolor flex flex-col overflow-hidden">
-                <div id="email-detail" class="h-full flex flex-col">
-                    <div id="no-selection" class="h-full flex flex-col items-center justify-center p-8 text-center text-zinc-500 my-auto">
-                        <i class="fa-solid fa-hand-pointer text-2xl text-zinc-600 mb-3"></i>
-                        <p class="text-sm font-medium text-zinc-400">Select a message to view content</p>
-                    </div>
+// 3. නිශ්චිත ඊමේල් පණිවිඩයක් කියවීම (Read Message Content)
+async function readMessage(id) {
+    try {
+        const response = await fetch(`https://www.1secmail.com/api/v1/?action=readMessage&login=${emailLogin}&domain=${emailDomain}&id=${id}`);
+        const msgData = await response.json();
+        
+        // පණිවිඩයේ සම්පූර්ණ අන්තර්ගතය පෙන්වීම
+        alert(`From: ${msgData.from}\nSubject: ${msgData.subject}\n\n${msgData.textBody}`);
+    } catch (error) {
+        console.error("Error reading message:", error);
+    }
+}
 
-                    <div id="mail-view" class="hidden flex-1 flex flex-col h-full">
-                        <div class="p-5 border-b border-bordercolor bg-zinc-900/30 space-y-4">
-                            <div class="flex items-start justify-between gap-4">
-                                <h3 id="view-subject" class="text-base font-bold text-zinc-100 leading-snug">--</h3>
-                                <button onclick="deleteCurrentEmail()" class="text-zinc-500 hover:text-rose-400 p-2 rounded-lg hover:bg-zinc-800 transition" title="Delete Message">
-                                    <i class="fa-regular fa-trash-can"></i>
-                                </button>
-                            </div>
-
-                            <div class="flex items-center space-x-3">
-                                <div id="view-avatar" class="w-9 h-9 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 font-bold flex items-center justify-center text-xs flex-shrink-0">
-                                    --
-                                </div>
-                                <div class="flex-1 min-w-0">
-                                    <div class="flex items-center justify-between">
-                                        <p id="view-sender-name" class="text-xs font-semibold text-zinc-200 truncate">--</p>
-                                        <span id="view-time" class="text-[11px] text-zinc-500">--</span>
-                                    </div>
-                                    <p id="view-sender-email" class="text-xs text-zinc-400 truncate">--</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="flex-1 p-5 overflow-y-auto bg-darkbg">
-                            <div id="view-body" class="prose prose-invert max-w-none text-xs text-zinc-300 leading-relaxed">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-        </div>
-    </main>
-
-    <!-- Footer -->
-    <footer class="bg-cardbg border-t border-bordercolor py-4 text-center text-xs text-zinc-500">
-        <p>CDMAIL • Disposable Email Solution</p>
-    </footer>
-
-    <!-- QR Code Modal -->
-    <div id="qr-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs hidden flex items-center justify-center p-4">
-        <div class="bg-cardbg rounded-xl p-6 max-w-sm w-full text-center space-y-4 border border-bordercolor">
-            <h3 class="font-bold text-base text-zinc-200">Address QR Code</h3>
-            <div id="qrcode-container" class="flex justify-center p-4 bg-white rounded-lg inline-block mx-auto"></div>
-            <p id="qr-email-text" class="text-xs font-mono text-zinc-400 break-all"></p>
-            <button onclick="closeQrModal()" class="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium py-2 rounded-lg text-xs border border-zinc-700 transition">Close</button>
-        </div>
-    </div>
-
-    <!-- Custom Email Address Modal -->
-    <div id="custom-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs hidden flex items-center justify-center p-4">
-        <div class="bg-cardbg rounded-xl p-6 max-w-md w-full space-y-4 border border-bordercolor">
-            <h3 class="font-bold text-base text-zinc-200">Customize CDMAIL Address</h3>
-            <div class="space-y-3">
-                <div>
-                    <label class="text-xs font-semibold text-zinc-400">Username</label>
-                    <input type="text" id="custom-username" placeholder="e.g. user" class="w-full mt-1 bg-darkbg border border-bordercolor text-zinc-100 px-3 py-2 rounded-lg text-xs focus:outline-none focus:border-zinc-500">
-                </div>
-                <div>
-                    <label class="text-xs font-semibold text-zinc-400">Domain</label>
-                    <select id="custom-domain" class="w-full mt-1 bg-darkbg border border-bordercolor text-zinc-100 px-3 py-2 rounded-lg text-xs focus:outline-none focus:border-zinc-500">
-                        <option value="cdmail.net">@cdmail.net</option>
-                        <option value="temp.cdmail.net">@temp.cdmail.net</option>
-                        <option value="mail.cdmail.net">@mail.cdmail.net</option>
-                    </select>
-                </div>
-            </div>
-            <div class="flex gap-2 pt-2">
-                <button onclick="applyCustomEmail()" class="flex-1 bg-zinc-200 hover:bg-white text-zinc-900 font-semibold py-2 rounded-lg text-xs transition">Set Address</button>
-                <button onclick="closeCustomModal()" class="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium py-2 rounded-lg text-xs border border-zinc-700 transition">Cancel</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Notification Toast -->
-    <div id="toast" class="fixed bottom-6 right-6 z-50 bg-zinc-800 border border-zinc-700 text-zinc-100 px-4 py-3 rounded-lg transform translate-y-20 opacity-0 transition-all duration-300 flex items-center space-x-3 pointer-events-none">
-        <i id="toast-icon" class="fa-solid fa-circle-check text-emerald-400"></i>
-        <span id="toast-msg" class="text-xs font-medium">Notification</span>
-    </div>
-
-    <!-- Application Script -->
-    <script>
-        let currentEmail = "";
-        let emails = [];
-        let activeEmailId = null;
-        let soundEnabled = true;
-
-        const sampleEmailTemplates = [
-            {
-                senderName: "CDMAIL System",
-                senderEmail: "support@cdmail.net",
-                subject: "Welcome to CDMAIL",
-                body: `<p style="color:#d4d4d8;">Your matte dark email address is ready to receive emails.</p><p style="color:#a1a1aa; margin-top:8px;">Emails will remain active until you manually trigger a mailbox reset.</p>`
-            },
-            {
-                senderName: "Verification Service",
-                senderEmail: "auth@services.com",
-                subject: "Security Access Code: 519-302",
-                body: `<p style="color:#d4d4d8;">Enter the code below to complete authorization:</p><div style="background:#18181b; border:1px solid #27272a; color:#e4e4e7; padding:10px 14px; border-radius:6px; font-weight:bold; font-family:monospace; font-size:16px; display:inline-block; margin:12px 0;">519-302</div>`
-            }
-        ];
-
-        window.onload = function() {
-            createNewEmail();
-            setTimeout(() => {
-                if (emails.length === 0) {
-                    triggerIncomingEmail(0);
-                }
-            }, 1500);
-        };
-
-        function generateRandomAddress() {
-            const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-            let name = '';
-            for (let i = 0; i < 8; i++) {
-                name += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return `${name}@cdmail.net`;
-        }
-
-        function createNewEmail() {
-            currentEmail = generateRandomAddress();
-            document.getElementById('email-address').value = currentEmail;
-            emails = [];
-            activeEmailId = null;
-            renderEmailList();
-            renderEmailView();
-            showToast("New CDMAIL address active", "fa-circle-check");
-        }
-
-        function deleteMailbox() {
-            createNewEmail();
-            showToast("Mailbox cleared & new address generated", "fa-trash");
-        }
-
-        function copyEmail() {
-            const input = document.getElementById('email-address');
-            input.select();
-            document.execCommand('copy');
-
-            const btnText = document.getElementById('copy-text');
-            btnText.innerText = "Copied!";
-            showToast("Copied to clipboard", "fa-copy");
-
-            setTimeout(() => {
-                btnText.innerText = "Copy";
-            }, 2000);
-        }
-
-        function triggerIncomingEmail(templateIndex = null) {
-            const index = templateIndex !== null ? templateIndex : Math.floor(Math.random() * sampleEmailTemplates.length);
-            const template = sampleEmailTemplates[index];
-
-            const newEmail = {
-                id: Date.now(),
-                senderName: template.senderName,
-                senderEmail: template.senderEmail,
-                subject: template.subject,
-                body: template.body,
-                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            };
-
-            emails.unshift(newEmail);
-            renderEmailList();
-            
-            if (soundEnabled) {
-                playNotificationSound();
-            }
-
-            showToast(`New mail from ${newEmail.senderName}`, "fa-envelope");
-        }
-
-        function refreshInbox() {
-            const icon = document.getElementById('refresh-icon');
-            icon.classList.add('animate-spin');
-            
-            setTimeout(() => {
-                icon.classList.remove('animate-spin');
-                showToast("Inbox synchronized", "fa-rotate");
-            }, 500);
-        }
-
-        function renderEmailList() {
-            const listContainer = document.getElementById('email-list');
-            const emptyState = document.getElementById('empty-state');
-            const countBadge = document.getElementById('email-count');
-
-            countBadge.innerText = `${emails.length} message${emails.length !== 1 ? 's' : ''}`;
-
-            if (emails.length === 0) {
-                listContainer.innerHTML = '';
-                listContainer.appendChild(emptyState);
-                emptyState.classList.remove('hidden');
-                return;
-            }
-
-            emptyState.classList.add('hidden');
-            listContainer.innerHTML = '';
-
-            emails.forEach(email => {
-                const item = document.createElement('div');
-                item.className = `p-3.5 cursor-pointer hover:bg-zinc-800/60 transition flex items-start space-x-3 ${activeEmailId === email.id ? 'bg-zinc-800/90 border-l-2 border-zinc-300' : ''}`;
-                item.onclick = () => selectEmail(email.id);
-
-                const avatarLetter = email.senderName.charAt(0).toUpperCase();
-
-                item.innerHTML = `
-                    <div class="w-8 h-8 rounded bg-zinc-800 border border-zinc-700 text-zinc-300 font-bold flex items-center justify-center text-xs flex-shrink-0">
-                        ${avatarLetter}
-                    </div>
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-center justify-between mb-0.5">
-                            <h4 class="text-xs font-bold text-zinc-200 truncate">${escapeHtml(email.senderName)}</h4>
-                            <span class="text-[10px] text-zinc-500">${email.time}</span>
-                        </div>
-                        <p class="text-xs font-medium text-zinc-300 truncate">${escapeHtml(email.subject)}</p>
-                    </div>
-                `;
-                listContainer.appendChild(item);
-            });
-        }
-
-        function selectEmail(id) {
-            activeEmailId = id;
-            renderEmailList();
-            renderEmailView();
-        }
-
-        function renderEmailView() {
-            const noSelection = document.getElementById('no-selection');
-            const mailView = document.getElementById('mail-view');
-
-            if (!activeEmailId) {
-                noSelection.classList.remove('hidden');
-                mailView.classList.add('hidden');
-                return;
-            }
-
-            const email = emails.find(e => e.id === activeEmailId);
-            if (!email) return;
-
-            noSelection.classList.add('hidden');
-            mailView.classList.remove('hidden');
-
-            document.getElementById('view-subject').innerText = email.subject;
-            document.getElementById('view-sender-name').innerText = email.senderName;
-            document.getElementById('view-sender-email').innerText = `<${email.senderEmail}>`;
-            document.getElementById('view-time').innerText = email.time;
-            document.getElementById('view-avatar').innerText = email.senderName.charAt(0).toUpperCase();
-            document.getElementById('view-body').innerHTML = email.body;
-        }
-
-        function deleteCurrentEmail() {
-            if (!activeEmailId) return;
-            emails = emails.filter(e => e.id !== activeEmailId);
-            activeEmailId = null;
-            renderEmailList();
-            renderEmailView();
-            showToast("Message deleted", "fa-trash-can");
-        }
-
-        function openCustomModal() {
-            document.getElementById('custom-modal').classList.remove('hidden');
-        }
-
-        function closeCustomModal() {
-            document.getElementById('custom-modal').classList.add('hidden');
-        }
-
-        function applyCustomEmail() {
-            const user = document.getElementById('custom-username').value.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
-            const domain = document.getElementById('custom-domain').value;
-
-            if (!user) {
-                showToast("Enter a valid username", "fa-triangle-exclamation");
-                return;
-            }
-
-            currentEmail = `${user}@${domain}`;
-            document.getElementById('email-address').value = currentEmail;
-            emails = [];
-            activeEmailId = null;
-            renderEmailList();
-            renderEmailView();
-            closeCustomModal();
-            showToast("Custom address assigned", "fa-check");
-        }
-
-        function showQrCode() {
-            const container = document.getElementById('qrcode-container');
-            container.innerHTML = '';
-            new QRCode(container, {
-                text: currentEmail,
-                width: 130,
-                height: 130
-            });
-            document.getElementById('qr-email-text').innerText = currentEmail;
-            document.getElementById('qr-modal').classList.remove('hidden');
-        }
-
-        function closeQrModal() {
-            document.getElementById('qr-modal').classList.add('hidden');
-        }
-
-        function toggleSound() {
-            soundEnabled = !soundEnabled;
-            const icon = document.getElementById('sound-icon');
-            if (soundEnabled) {
-                icon.className = 'fa-solid fa-bell text-sm';
-                showToast("Notifications enabled", "fa-bell");
-            } else {
-                icon.className = 'fa-solid fa-bell-slash text-sm';
-                showToast("Notifications muted", "fa-bell-slash");
-            }
-        }
-
-        function playNotificationSound() {
-            try {
-                const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(440, ctx.currentTime);
-                gain.gain.setValueAtTime(0.05, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.25);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start();
-                osc.stop(ctx.currentTime + 0.25);
-            } catch(e) {}
-        }
-
-        function showToast(message, iconClass) {
-            const toast = document.getElementById('toast');
-            document.getElementById('toast-msg').innerText = message;
-            document.getElementById('toast-icon').className = `fa-solid ${iconClass} text-emerald-400`;
-
-            toast.classList.remove('translate-y-20', 'opacity-0');
-            toast.classList.add('translate-y-0', 'opacity-100');
-
-            setTimeout(() => {
-                toast.classList.remove('translate-y-0', 'opacity-100');
-                toast.classList.add('translate-y-20', 'opacity-0');
-            }, 2500);
-        }
-
-        function escapeHtml(str) {
-            return str.replace(/[&<>'"]/g, 
-                tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
-            );
-        }
-    </script>
-</body>
-</html>
-```
+// වෙබ් අඩුව විවෘත වූ වහාම ඊමේල් ලිපිනයක් සකස් කර ගැනීම සහ තත්පර 10කට වරක් ඉන්බොක්ස් එක Refresh වීම
+window.onload = () => {
+    generateNewEmail();
+    setInterval(checkInbox, 10000); // 10 seconds
+};
